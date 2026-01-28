@@ -3,56 +3,53 @@ import { supabase } from './supabaseClient';
 
 function App() {
   const [files, setFiles] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentView, setCurrentView] = useState<'drive' | 'trash'>('drive');
   const [trashedFiles, setTrashedFiles] = useState<string[]>([]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 1. FETCH PUBLIC DATA
   const fetchFiles = async () => {
     try {
-      setLoading(true);
-      const { data, error } = await supabase.storage.from('files').list('public');
+      const { data, error } = await supabase.storage.from('files').list('public'); 
       if (error) throw error;
       setFiles(data || []);
-    } catch (err: any) { console.error(err.message); } 
-    finally { setLoading(false); }
+    } catch (err: any) {
+      console.error("Fetch Error:", err.message);
+    }
   };
 
-  useEffect(() => { fetchFiles(); }, []);
+  useEffect(() => {
+    fetchFiles();
+  }, []);
 
+  // 2. PUBLIC UPLOAD
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const { error } = await supabase.storage.from('files').upload(`public/${file.name}`, file, { upsert: true });
+      const { error } = await supabase.storage
+        .from('files')
+        .upload(`public/${file.name}`, file, { upsert: true });
+      
       if (error) throw error;
       fetchFiles(); 
-    } catch (err: any) { alert("Upload failed: " + err.message); }
-  };
-
-  // --- NEW: PERMANENT DELETE LOGIC ---
-  const handlePermanentDelete = async (fileName: string) => {
-    if (!window.confirm("This will permanently remove the file from the Cloud. Continue?")) return;
-    try {
-      const { error } = await supabase.storage.from('files').remove([`public/${fileName}`]);
-      if (error) throw error;
-      
-      // Update local trash state and refresh list
-      setTrashedFiles(prev => prev.filter(n => n !== fileName));
-      fetchFiles();
-      alert("File permanently deleted.");
     } catch (err: any) {
-      alert("Delete failed: Check your 'anon' DELETE policy in Supabase.");
+      alert("Upload failed: " + err.message);
     }
   };
 
+  // 3. FILE ACTIONS (PREVIEW/DOWNLOAD)
   const handleFileAction = (fileName: string) => {
     if (currentView === 'trash') return;
     const { data } = supabase.storage.from('files').getPublicUrl(`public/${fileName}`);
-    if (fileName.match(/\.(jpeg|jpg|png|gif|webp)$/i)) setPreviewUrl(data.publicUrl);
-    else window.open(data.publicUrl, '_blank');
+    
+    if (fileName.match(/\.(jpeg|jpg|png|gif|webp)$/i)) {
+      setPreviewUrl(data.publicUrl);
+    } else {
+      window.open(data.publicUrl, '_blank');
+    }
   };
 
   const displayFiles = files.filter(f => {
@@ -67,7 +64,6 @@ function App() {
         .sidebar { background: white; border-right: 1px solid #e0e0e0; display: flex; flex-direction: column; padding: 24px 0; }
         .nav-item { padding: 12px 24px; border: none; background: transparent; text-align: left; font-weight: 500; border-radius: 0 30px 30px 0; margin-right: 12px; cursor: pointer; transition: 0.2s; color: #444; }
         .nav-item.active { background: #c2e7ff; color: #001d35; }
-        .nav-item:hover:not(.active) { background: #f1f3f4; }
         .main { background: #f8f9fa; padding: 24px; overflow-y: auto; }
         .drive-box { background: white; border-radius: 24px; border: 1px solid #e0e0e0; min-height: 100%; padding: 24px; }
         .preview-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 1000; }
@@ -78,6 +74,7 @@ function App() {
       {previewUrl && (
         <div className="preview-overlay" onClick={() => setPreviewUrl(null)}>
           <img src={previewUrl} style={{maxHeight:'85%', maxWidth:'85%', borderRadius:'8px'}} alt="Preview" />
+          <button className="btn btn-light position-absolute top-0 end-0 m-4 rounded-circle" onClick={() => setPreviewUrl(null)}>✕</button>
         </div>
       )}
 
@@ -91,6 +88,7 @@ function App() {
           <button onClick={() => setCurrentView('drive')} className={`nav-item w-100 ${currentView === 'drive' ? 'active' : ''}`}>🏠 My Drive</button>
           <button onClick={() => setCurrentView('trash')} className={`nav-item w-100 ${currentView === 'trash' ? 'active' : ''}`}>🗑️ Trash</button>
         </nav>
+        <div className="px-4 py-3 border-top text-muted small">Public Mode</div>
       </aside>
 
       <main className="main">
@@ -105,16 +103,11 @@ function App() {
               <div key={file.id} className="col">
                 <div className="file-card bg-light" onClick={() => handleFileAction(file.name)}>
                   <div className="position-absolute top-0 end-0 p-1">
-                    {currentView === 'drive' ? (
-                      <button onClick={(e) => { e.stopPropagation(); setTrashedFiles(p => [...p, file.name]); }} className="btn btn-sm text-muted">✕</button>
-                    ) : (
-                      <div className="d-flex gap-1">
-                        <button onClick={(e) => { e.stopPropagation(); setTrashedFiles(p => p.filter(n => n !== file.name)); }} className="btn btn-sm text-success">↺</button>
-                        <button onClick={(e) => { e.stopPropagation(); handlePermanentDelete(file.name); }} className="btn btn-sm text-danger">✕</button>
-                      </div>
-                    )}
+                    <button onClick={(e) => { e.stopPropagation(); setTrashedFiles(p => currentView === 'drive' ? [...p, file.name] : p.filter(n => n !== file.name)); }} className="btn btn-sm text-muted">
+                      {currentView === 'drive' ? '✕' : '↺'}
+                    </button>
                   </div>
-                  <div className="fs-1">{file.name.match(/\.(jpeg|jpg|png|gif|webp)$/i) ? '🖼️' : '📄'}</div>
+                  <div className="fs-1 mb-2">{file.name.match(/\.(jpeg|jpg|png|gif|webp)$/i) ? '🖼️' : '📄'}</div>
                   <div className="small fw-bold text-truncate px-2">{file.name}</div>
                 </div>
               </div>
