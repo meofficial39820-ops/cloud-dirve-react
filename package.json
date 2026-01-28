@@ -10,7 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.90.1",
+    "@heroicons/react": "^2.2.0",
+    "@supabase/supabase-js": "^2.91.0",
     "bootstrap": "^5.3.8",
     "lucide-react": "^0.562.0",
     "react": "^19.2.0",
